@@ -37,3 +37,11 @@ char_to_replace = {",": " ",
 for key, value in char_to_replace.items():
   text = text.replace(key, value)
 text
+
+
+#Yusuf Can Gökalp'in Önerdiği Alternatif
+defexample2(string):
+    new_string = string.replace(",", "").replace(".", "").upper().split()
+    print(new_string)
+    
+example2(text)
