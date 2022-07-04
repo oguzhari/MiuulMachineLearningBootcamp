@@ -10,7 +10,19 @@ text = "The goal is to turn data into information, and information into sight"
 text = text.replace("."," ")
 text = text.replace(","," ")
 text = text.upper().split(" ")
-# Çıktı: ['THE', 'GOAL', 'IS', 'TO', 'TURN', 'DATA', 'INTO', 'INFORMATION,', 'AND', 'INFORMATION', 'INTO', 'SIGHT']
+# Çıktı: ['THE',
+#  'GOAL',
+#  'IS',
+#  'TO',
+#  'TURN',
+#  'DATA',
+#  'INTO',
+#  'INFORMATION',
+#  '',
+#  'AND',
+#  'INFORMATION',
+#  'INTO',
+#  'SIGHT']
 
 
 #@Hasan Alperen Albayrak'ın Önerdiği Alternatif
