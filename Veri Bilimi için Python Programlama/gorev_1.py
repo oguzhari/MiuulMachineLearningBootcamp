@@ -18,7 +18,7 @@ type(z)
 
 a = "Hello World"
 type(a)
-# Çıktı:
+# Çıktı: <class 'str'>
 
 b = True
 type(b)
