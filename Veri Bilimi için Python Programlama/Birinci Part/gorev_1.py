@@ -28,13 +28,13 @@ c = 23 < 22
 type(c)
 # Çıktı: <class 'bool'>
 
-l = [1, 2, 3, 4]
-type(l)
+le = [1, 2, 3, 4]
+type(le)
 # Çıktı: <class 'list'>
 
 d = {"Name": "Jake",
      "Age": 27,
-     "Adress": "Downtown"}
+     "Address": "Downtown"}
 type(d)
 # Çıktı: <class 'dict'>
 
