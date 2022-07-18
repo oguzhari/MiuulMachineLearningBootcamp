@@ -411,5 +411,106 @@ plt.show()
 
 # Eksik değerlerin bağımlı değişken ile ilişkisinin incelenmesi
 
+missing_values_table(df, True)
+na_cols = missing_values_table(df, True)
+
+
+def missing_vs_target(dataframe, target, na_columns):
+    temp_df = dataframe.copy()
+    for col in na_columns:
+        temp_df[col + '_NA_FLAG'] = np.where(temp_df[col].isnull(), 1, 0)
+    na_flags = temp_df.loc[:, temp_df.columns.str.contains("_NA_")].columns
+    for col in na_flags:
+        print(pd.DataFrame({"Target Mean": temp_df.groupby(col)[target].mean(),
+                            "Count": temp_df.groupby(col)[target].count()}), end="\n\n\n")
+
+
+missing_vs_target(df, "Survived", na_cols)
+
+
+# Label Encoding & Binary Encoding
+# Binary Encoding 0-1
+# Label Encoding 0-1-2-..-n
+
+df = load()
+df.head()
+df["Sex"].head()
+le = LabelEncoder()
+le.fit_transform(df["Sex"])[0:5]
+le.inverse_transform([0, 1])
+
+
+def label_encoder(dataframe, binary_col):
+    labelencoder = LabelEncoder()
+    dataframe[binary_col] = labelencoder.fit_transform(dataframe[binary_col])
+    return dataframe
+
+
+df = load()
+
+binary_cols = [col for col in df.columns if df[col].dtype not in [int, float] and df[col].nunique() == 2]
+
+for col in binary_cols:
+    label_encoder(df, col)
+
+
+df = load_application_train()
+df.shape
+
+binary_cols = [col for col in df.columns if df[col].dtype not in [int, float] and df[col].nunique() == 2]
+
+df[binary_cols].head()
+
+for col in binary_cols:
+    label_encoder(df, col)
+
+df = load()
+df["Embarked"].value_counts()
+df["Embarked"].nunique()
+len(df["Embarked"].unique())
+
+# One-Hot Encoding.
+# Örneğin 4 değişken var.
+# FB-GS-BJK-TS
+# Sütunların şöyle olduğunu varsayalım.
+# FB GS BJK TS
+# 1  0   0  0
+# 0  1   0  0
+# 0  0   1  0
+# 0  0   0  1
+# Burada, FB sütunun olması, aslında bir dummy değişkendir.
+# FB sütunu olmamalı,
+# GS BJK TS
+# 0   0  0
+# 1   0  0
+# 0   1  0
+# 0   0  1
+# Böylece hepsinin 0 olduğu yer FB.
+
+df = load()
+df.head()
+df["Embarked"].value_counts()
+
+pd.get_dummies(df, columns=["Embarked"], drop_first=True).head()
+
+pd.get_dummies(df, columns=["Embarked"], dummy_na=True).head()
+
+pd.get_dummies(df, columns=["Sex", "Embarked"], drop_first=True).head()
+
+
+def one_hot_encoder(dataframe, categorical_cols, drop_first=True):
+    dataframe = pd.get_dummies(dataframe, columns=categorical_cols, drop_first=drop_first)
+    return dataframe
+
+
+df = load()
+
+num_cols, cat_cols, cat_but_car = grab_col_names(df)
+
+ohe_cols = [col for col in df.columns if 2 < df[col].nunique() <= 10]
+
+
+
+
 
 
