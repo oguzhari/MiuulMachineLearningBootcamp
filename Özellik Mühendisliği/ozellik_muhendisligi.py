@@ -238,3 +238,178 @@ for col in num_cols:
 
 
 check_outlier(df, num_cols)
+grab_outliers(df, "Age", index=True)
+
+remove_outlier(df, "Age").shape
+replace_with_thresholds(df, "Age")
+check_outlier(df, "Age")
+
+# Çok değişkenli Aykırı Değer Analizi: Local Outlier Factor
+# 3 kez evlenmiş olmak, bir aykırı değer midir? Hayır.
+# 17 yaşında olmak bir aykırı değer midir? Hayır.
+# Ancak, 17 yaşında olup 3 kez evlenmiş olmak bir aykırı değerdir.
+# Bazı değerler birlikte alındığında aykırı değer olarak ifade edilebilir.
+#
+# LOFi -> Gözlemleri bulundukları konumda yoğunluk tabanlı skorlayarak, aykırı değer olabilecek değerleri
+# tanıma imkanı sağlar.
+# Bir noktanın lokal yoğunluğu, o noktanın etrafındaki komşuluklar demektir. O noktanın yoğunluğu komşularınkinden
+# anlamlı bir şekilde düşükse, o nokta aykırı değerdir. LOFi bize aykırı değerleri hesaplama imkanı sağlar.
+
+df = sns.load_dataset("diamonds")
+df = df.select_dtypes(include=['float64', 'int64'])
+df = df.dropna()
+df.head()
+
+check_outlier(df, list(df.columns))
+
+low, up = outlier_thresholds(df, "depth")
+df[((df["depth"] < low) | (df["depth"] > up))].shape
+
+clf = LocalOutlierFactor(n_neighbors=20)
+clf.fit_predict(df)
+df_scores = clf.negative_outlier_factor_
+# Negatif skorların olmasını istemiyorsak
+# df_scores = -df_scores
+df_scores[0:5]
+
+np.sort(df_scores)[0:5]
+
+scores = pd.DataFrame(np.sort(df_scores))
+scores.plot(stacked=True, xlim=[0, 50], style='.-')
+plt.show()
+th = np.sort(df_scores)[3]
+
+df[df_scores < th].shape
+df.describe([0.01, 0.05, 0.75, 0.9, 0.99]).T
+
+df[df_scores < th].drop(axis=0, labels=df[df_scores < th].index)
+
+# Ağaç yöntemleri kullanıyorsak, aykırı değerlere hiç ellememeyi tercih ediyoruz.
+# Eğer dokunacaksak, sınırları %1-%99 veya %5-%95 seçebiliriz.
+# Doğrusal yöntemlerde ise aykırı değerler çok önemlidir. Eğer aykırı değerler azsa silinebilir.
+# Doldurmak yerine de, tek değişkenli yaklaşıp (değişken bazında) baskılamak kullanılabilir.
+
+# Missing Values
+# Gözlemlerde eksiklik olması durumunu ifade etmektedir.
+# Eksik değerler nasıl çözüür?
+# -> Silme
+# -> Değer atama
+# -> Tahmine dayalı yöntemler
+
+# Eksik değerlerin yakalanması
+
+df = load()
+df.head()
+
+# Eksik gözlem var mı yok mu sorgusu
+df.isnull().values.any()
+
+# değişkenkerdeki eksik değer sayısı.
+df.isnull().sum()
+
+# Değişkenlerdeki tam değer sayısı.
+df.notnull().sum()
+
+# Veri setindeki toplam eksik değer
+df.isnull().sum().sum()
+
+# en az bir tane eksik değere sahip olan gözlem birimleri
+df[df.isnull().any(axis=1)]
+
+# tam olan gözlem birimleri
+df[df.notnull().all(axis=1)]
+
+# Azalan şekilde sıralamak
+df.isnull().sum().sort_values(ascending=False)
+
+(df.isnull().sum() / df.shape[0] * 100).sort_values(ascending=False)
+
+na_cols = [col for col in df.columns if df[col].isnull().sum() > 0]
+
+
+def missing_values_table(dataframe, na_name=False):
+    na_columns = [col for col in dataframe.columns if dataframe[col].isnull().sum() > 0]
+    n_miss = dataframe[na_columns].isnull().sum().sort_values(ascending=False)
+    ratio = (dataframe[na_columns].isnull().sum() / dataframe.shape[0] * 100).sort_values(ascending=False)
+    missing_df = pd.concat([n_miss, np.round(ratio, 2)], axis=1, keys=['n_miss', 'ratio'])
+    print(missing_df, end="\n")
+
+    if na_name:
+        return na_columns
+
+
+# Eksik Değer Problemini Çözme
+missing_values_table(df)
+
+# Çözüm 1: Hızlıca Silmek
+df.dropna()
+
+# Çözüm 2: Basit Atama Yöntemleri ile doldurmak
+df["Age"].fillna(df["Age"].mean())
+df["Age"].fillna(df["Age"].median())
+
+
+dff = df.apply(lambda x: x.fillna(x.mean()) if x.dtype != "O" else x, axis=0)
+
+dff.isnull().sum().sort_values(ascending=False)
+
+df["Embarked"].fillna(df["Embarked"].mode()[0]).isnull().sum()
+df["Embarked"].fillna("missing")
+
+df.apply(lambda x: x.fillna(x.mode()[0]) if (x.dtype == "O" and len(x.unique()) <= 10) else x, axis=0)
+
+
+# Kategorik Değişken Kırılımında Değer Atama
+
+df.groupby("Sex")["Age"].mean()
+
+df["Age"].fillna(df.groupby("Sex")["Age"].transform("mean"))
+# df["Age"].fillna(df.groupby("Sex")["Age"].transform("mean")).isnull().sum()
+
+df.loc[(df["Age"].isnull()) & (df["Sex"] == "female"), "Age"] = df.groupby("Sex")["Age"].mean()["female"]
+df.loc[(df["Age"].isnull()) & (df["Sex"] == "male"), "Age"] = df.groupby("Sex")["Age"].mean()["male"]
+
+
+# Çözüm 3: Tahmine Dayalı Atama ile Doldurma
+
+df = load()
+
+num_cols, cat_cols, cat_but_car = grab_col_names(df)
+num_cols = [col for col in num_cols if col not in "PassengerId"]
+
+dff = pd.get_dummies(df[cat_cols + num_cols], drop_first=True)
+
+# Değişkenkerin standartlaştırılması
+scaler = MinMaxScaler()
+dff = pd.DataFrame(scaler.fit_transform(dff), columns=dff.columns)
+dff.head()
+
+# knn'in uygulanması
+from sklearn.impute import KNNImputer
+imputer = KNNImputer(n_neighbors=5)
+
+dff = pd.DataFrame(imputer.fit_transform(dff), columns=dff.columns)
+dff.head()
+
+dff = pd.DataFrame(scaler.inverse_transform(dff), columns=dff.columns)
+
+df["age_imputed_knn"] = dff[["Age"]]
+
+df.loc[df["Age"].isnull(), ["Age", "age_imputed_knn"]]
+
+
+# Gelişmiş Analizler
+msno.bar(df)
+plt.show()
+
+msno.matrix(df)
+plt.show()
+
+msno.heatmap(df)
+plt.show()
+
+
+# Eksik değerlerin bağımlı değişken ile ilişkisinin incelenmesi
+
+
+
