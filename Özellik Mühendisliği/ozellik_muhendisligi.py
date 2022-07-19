@@ -141,7 +141,7 @@ def grab_col_names(dataframe, cat_th=10, car_th=20) -> [list, list, list]:
     """
     categorical_cols = [col for col in dataframe.columns if str(dataframe[col].dtype) in ["category", "object", "bool"]]
     numeric_but_categorical = [col for col in dataframe.columns if dataframe[col].nunique() < cat_th
-                               and str(dataframe[col].dtypes) in ["int64", "float64"]]
+                               and str(dataframe[col].dtypes) in ["uint8", "int32", "int64", "float64"]]
     categorical_but_cardinal = [col for col in dataframe.columns if dataframe[col].nunique() > car_th
                                 and str(dataframe[col].dtypes) in ["category", "object"]]
     categorical_cols = categorical_cols + numeric_but_categorical
@@ -188,7 +188,7 @@ grab_outliers(df, "Age", True)
 # Aykırı Değerleri Dövmek
 
 # Silme
-low, up = outlier_thresholds(df, "Age")
+low, up = outlier_thresholds(df, "Fare")
 df.shape
 
 df[~((df["Fare"] < low) | (df["Fare"] > up))].shape
@@ -509,8 +509,410 @@ num_cols, cat_cols, cat_but_car = grab_col_names(df)
 
 ohe_cols = [col for col in df.columns if 2 < df[col].nunique() <= 10]
 
+# Rare Encoding
+# 1. Kategorik değişkenlerin azlık çokluk durumunun analiz edilmesi
+# 2. Rare kategoriler ile bağımlı değişken ilişksinin analiz edilmesi.
+# 3. Rare encoder yazacağız.
+
+
+# 1. Kategorik değişkenlerin azlık çokluk durumunun analiz edilmesi.
+
+df = load_application_train()
+df["NAME_EDUCATION_TYPE"].value_counts()
+
+num_cols, cat_cols, cat_but_car = grab_col_names(df)
+
+
+def cat_summary(dataframe, categorical_cols, plot=False):
+    """
+    Tasks
+    -----
+    Veri setindeki kategorik sütunlara ait verileri hakkında bilgiler veren fonksiyon.
+    Parameters
+    ----------
+    dataframe: pandas.DataFrame
+        İncelenmek istenilen pandas.Dataframe'i
+    categorical_cols: list
+        Kategorik sütunların olduğu liste
+    plot: bool, default=False
+        true ise, bir plot döndürür.
+    Returns
+    -------
+    col:
+        Sütun içerisinde bulunan benzersiz değerlerin listesi.
+    Ratio:
+        Bu değerlerin tüm veri setine dağılımı, değerler toplamı 1~ olmalı.
+    """
+    for col in categorical_cols:
+        if (dataframe[col].dtypes == "category" or dataframe[col].dtypes == "bool") and dataframe[col].nunique() == 2:
+            dataframe[col] = dataframe[col].astype(int)
+        print("col type:", str(dataframe[col].dtype))
+        print(pd.DataFrame({col: dataframe[col].value_counts(),
+                            "Ratio": df[col].value_counts(normalize=True)}))
+        print("#" * 23)
+        if plot:
+            sns.countplot(x=dataframe[col], data=dataframe)
+            plt.show(block=True)
+
+
+for col in cat_cols:
+    cat_summary(df, col)
+
+
+# Rare kategoriler ile bağımlı değişken arasındaki ilişkinin analiz edilmesi.
+
+df["NAME_INCOME_TYPE"].value_counts()
+df.groupby("NAME_INCOME_TYPE")["TARGET"].mean()
+
+
+def rare_analyser(dataframe, target, categorical_columns):
+    for col in categorical_columns:
+        print(col, ":", len(dataframe[col].value_counts()))
+        print(pd.DataFrame({"COUNT": dataframe[col].value_counts(),
+                            "RATIO": dataframe[col].value_counts() / len(dataframe),
+                            "TARGET_MEAN": dataframe.groupby(col)[target].mean()}), end="\n\n\n")
+
+
+rare_analyser(df, "TARGET", cat_cols)
+
+
+def rare_encoder(dataframe, rare_perc):
+    temp_df = dataframe.copy()
+
+    rare_columns = [col for col in temp_df.columns if temp_df[col].dtypes == 'O'
+                    and (temp_df[col].value_counts() / len(temp_df) < rare_perc).any(axis=None)]
+
+    for var in rare_columns:
+        tmp = temp_df[var].value_counts() / len(temp_df)
+        rare_labels = tmp[tmp < rare_perc].index
+        temp_df[var] = np.where(temp_df[var].isin(rare_labels), 'Rare', temp_df[var])
+
+    return temp_df
+
+
+new_df = rare_encoder(df, 0.01)
+rare_analyser(new_df, "TARGET", cat_cols)
+df["OCCUPATION_TYPE"].value_counts()
+
+# StandardScaler: Klasik Standartlaştırma. Ortalamayı Çıkar, standart sapmaya böl.
+# z = (x - u) / s
+# Standart sapma aykırı değerlerden etkilenebilir.
+
+df = load()
+ss = StandardScaler()
+df["Age_standard_scaler"] = ss.fit_transform(df[["Age"]])
+
+
+# RobustScaler: Medyanı çıkar, IQR'a böl.
+rs = RobustScaler()
+df["Age_robuts_scaler"] = rs.fit_transform(df[["Age"]])
+df[["Age", "Age_standard_scaler", "Age_robuts_scaler"]].describe().T
+
+
+# Min_max_scaler = (X - X.min(axis = 0)) / (X.max(axis = 0) - X.min(axis  = 0))
+# X_scaled = X_std * (max - min) * min
+
+mns = MinMaxScaler()
+df["Age_min_max_scaler"] = mns.fit_transform(df[["Age"]])
+df[[col for col in df.columns if "Age" in col]].describe().T
+
+
+def num_summary(dataframe, numerical_col, plot=False):
+    """
+    Tasks
+    -----
+    nümerik sütunlara ait describe() bilgilerini ve plot=True ise grafik bilgisini döndüren kod.
+    Parameters
+    ----------
+    dataframe: pandas.DataFrame
+        İncelenmek istenilen pandas.Dataframe'i
+    numerical_col: list
+        Nümerik sütunlara ait liste.
+    plot: bool, default=False
+        True olması halinde söz konusu sütunlara ait histogram'ın döndürülmesini sağlar.
+    Returns
+    -------
+    Sütunlara ait describe bilgisini ve plot=True ise histogram grafiğini döndürür.
+    """
+    for col in numerical_col:
+        print(col)
+        print(dataframe[col].describe([0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]).T)
+        if plot:
+            dataframe[col].hist()
+            plt.xlabel(col)
+            plt.title(col)
+            plt.show(block=True)
+
+
+num_cols = [col for col in df.columns if "Age" in col]
+
+num_summary(df, num_cols, plot=True)
+
+# Numeric to Categorical: Sayısal Değişkenleri Kategorik değişkenlere çevirme
+# Binning
+
+df["Age_qcut"] = pd.qcut(df["Age"], 5)
+
+
+# Feature extraction (Özellik Çıkarımı)
+df = load()
+
+df["NEW_CABIN_BOOL"] = df["Cabin"].notnull().astype('int')
+df["NEW_CABIN_BOOL"].head()
+
+df.groupby("NEW_CABIN_BOOL").agg({"Survived": "mean"})
+
+from statsmodels.stats.proportion import proportions_ztest
+
+test_stats, pvalue = proportions_ztest(count=[df.loc[df["NEW_CABIN_BOOL"] == 1, "Survived"].sum(),
+                                              df.loc[df["NEW_CABIN_BOOL"] == 0, "Survived"].sum()],
+                                       nobs=[df.loc[df["NEW_CABIN_BOOL"] == 1, "Survived"].shape[0],
+                                             df.loc[df["NEW_CABIN_BOOL"] == 0, "Survived"].shape[0]])
+
+print('Test stat= %.4f, p-value %.4f' % (test_stats, pvalue))
+# pvalue, < 0.05 ise h0 hipotezi reddedilir, h1 kabul edilir.
+# h0: Kabin numarası olması olmaması arasında survived bakımından anlamlı fark yoktur
+# h1: Kabin numarası olması olmaması arasında survived bakımından anlamlı fark vardır
+
+df.loc[((df['SibSp'] + df['Parch']) > 0), "NEW_IS_ALONE"] = "NO"
+df.loc[((df['SibSp'] + df['Parch']) == 0), "NEW_IS_ALONE"] = "YES"
+
+df.groupby("NEW_IS_ALONE").agg({"Survived": "mean"})
+
+test_stats, pvalue = proportions_ztest(count=[df.loc[df["NEW_IS_ALONE"] == "YES", "Survived"].sum(),
+                                              df.loc[df["NEW_IS_ALONE"] == "NO", "Survived"].sum()],
+                                       nobs=[df.loc[df["NEW_IS_ALONE"] == "YES", "Survived"].shape[0],
+                                             df.loc[df["NEW_IS_ALONE"] == "NO", "Survived"].shape[0]])
+
+print('Test stat= %.4f, p-value %.4f' % (test_stats, pvalue))
+
+
+# Text'ler üzerinden özellik türetmek.
+
+df.head()
+
+# Letter Count
+df["NEW_NAME_COUNT"] = df["Name"].str.len()
+
+# Word count
+df["NEW_NAME_WORD_COUNT"] = df["Name"].apply(lambda x: len(str(x).split(" ")))
+
+# Özel Yapıları Yakalamak
+df["NEW_NAME_DR"] = df["Name"].apply(lambda x: len([x for x in x.split() if x.startswith("Dr")]))
+
+df.groupby("NEW_NAME_DR").agg({"Survived": ["mean", "count"]})
+
+# Regex ile Değişken Türetmek
+
+df = load()
+df.head()
+
+df["NEW_TITLE"] = df.Name.str.extract(' ([A-Za-z]+)\.', expand=True)
+
+df[["NEW_TITLE", "Survived", "Age"]].groupby(["NEW_TITLE"]).agg({"Survived": "mean", "Age": ["count", "mean"]})
+
+
+# Data Değişkenleri Üretmek
+
+dff = pd.read_csv("Özellik Mühendisliği/datasets/course_reviews.csv")
+dff.head()
+dff.info()
+
+dff["Timestamp"] = pd.to_datetime(dff["Timestamp"], format="%Y-%m-%d")
+
+# year
+dff["year"] = dff["Timestamp"].dt.year
+
+# month
+dff["month"] = dff["Timestamp"].dt.month
+
+# year diff
+dff["year_diff"] = date.today().year - dff["Timestamp"].dt.year
+
+
+dff['mont_diff'] = (date.today().year - dff['Timestamp'].dt.year) * 12 + date.today().month - dff["Timestamp"].dt.month
+
+dff['day_name'] = dff['Timestamp'].dt.day_name()
+
+
+# Feature Interactions (Özellik Etkileşimleri)
+
+df = load()
+df.head()
+
+df["NEW_AGE_PCLASS"] = df["Age"] * df["Pclass"]
+
+df["NEW_FAMILY_SIZE"] = df["SibSp"] + df["Parch"] + 1
+
+df.loc[(df['Sex'] == 'male') & (df['Age'] <= 21), 'NEW_SEX_CAT'] = 'youngmale'
+
+df.loc[(df['Sex'] == 'male') & (df['Age'] > 21) & (df['Age'] <= 50), 'NEW_SEX_CAT'] = 'maturemale'
+
+df.loc[(df['Sex'] == 'male') & (df['Age'] > 50), 'NEW_SEX_CAT'] = 'seniormale'
+
+df.loc[(df['Sex'] == 'female') & (df['Age'] <= 21), 'NEW_SEX_CAT'] = 'youngfemale'
+
+df.loc[(df['Sex'] == 'female') & (df['Age'] > 21) & (df['Age'] <= 50), 'NEW_SEX_CAT'] = 'maturefemale'
+
+df.loc[(df['Sex'] == 'female') & (df['Age'] > 50), 'NEW_SEX_CAT'] = 'seniorfemale'
+
+df.groupby("NEW_SEX_CAT")["Survived"].mean()
 
 
 
+# Feature Engineering
+df = load()
+df.columns = [col.upper() for col in df.columns]
 
+# 1. Feature Engineering (Değişken Mühendisliği)
+# Cabin bool
+df["NEW_CABIN_BOOL"] = df["CABIN"].notnull().astype('int')
+# Name count
+df["NEW_NAME_COUNT"] = df["NAME"].str.len()
+# name word count
+df["NEW_NAME_WORD_COUNT"] = df["NAME"].apply(lambda x: len(str(x).split(" ")))
+# name dr
+df["NEW_NAME_DR"] = df["NAME"].apply(lambda x: len([x for x in x.split() if x.startswith("Dr")]))
+# name title
+df['NEW_TITLE'] = df.NAME.str.extract(' ([A-Za-z]+)\.', expand=False)
+# family size
+df["NEW_FAMILY_SIZE"] = df["SIBSP"] + df["PARCH"] + 1
+# age_pclass
+df["NEW_AGE_PCLASS"] = df["AGE"] * df["PCLASS"]
+# is alone
+df.loc[((df['SIBSP'] + df['PARCH']) > 0), "NEW_IS_ALONE"] = "NO"
+df.loc[((df['SIBSP'] + df['PARCH']) == 0), "NEW_IS_ALONE"] = "YES"
+# age level
+df.loc[(df['AGE'] < 18), 'NEW_AGE_CAT'] = 'young'
+df.loc[(df['AGE'] >= 18) & (df['AGE'] < 56), 'NEW_AGE_CAT'] = 'mature'
+df.loc[(df['AGE'] >= 56), 'NEW_AGE_CAT'] = 'senior'
+# sex x age
+df.loc[(df['SEX'] == 'male') & (df['AGE'] <= 21), 'NEW_SEX_CAT'] = 'youngmale'
+df.loc[(df['SEX'] == 'male') & (df['AGE'] > 21) & (df['AGE'] < 50), 'NEW_SEX_CAT'] = 'maturemale'
+df.loc[(df['SEX'] == 'male') & (df['AGE'] >= 50), 'NEW_SEX_CAT'] = 'seniormale'
+df.loc[(df['SEX'] == 'female') & (df['AGE'] <= 21), 'NEW_SEX_CAT'] = 'youngfemale'
+df.loc[(df['SEX'] == 'female') & (df['AGE'] > 21) & (df['AGE'] < 50), 'NEW_SEX_CAT'] = 'maturefemale'
+df.loc[(df['SEX'] == 'female') & (df['AGE'] >= 50), 'NEW_SEX_CAT'] = 'seniorfemale'
+
+df.head()
+df.shape
+
+num_cols, cat_cols, cat_but_car = grab_col_names(df)
+num_cols = [col for col in num_cols if "PASSENGERID" not in col]
+
+
+# Check outlier
+check_outlier(df, num_cols)
+
+# replace with thresholds
+for col in num_cols:
+    replace_with_thresholds(df, col)
+
+# Check outlier
+check_outlier(df, num_cols)
+
+# Missing Values
+
+missing_values_table(df)
+
+df.drop("CABIN", inplace=True, axis=1)
+
+remove_cols = ["TICKET", "NAME"]
+df.drop(remove_cols, inplace=True, axis=1)
+
+df["AGE"] = df["AGE"].fillna(df.groupby("NEW_TITLE")["AGE"].transform("median"))
+
+df["NEW_AGE_PCLASS"] = df["AGE"] * df["PCLASS"]
+
+# age level
+df.loc[(df['AGE'] < 18), 'NEW_AGE_CAT'] = 'young'
+df.loc[(df['AGE'] >= 18) & (df['AGE'] < 56), 'NEW_AGE_CAT'] = 'mature'
+df.loc[(df['AGE'] >= 56), 'NEW_AGE_CAT'] = 'senior'
+# sex x age
+df.loc[(df['SEX'] == 'male') & (df['AGE'] <= 21), 'NEW_SEX_CAT'] = 'youngmale'
+df.loc[(df['SEX'] == 'male') & (df['AGE'] > 21) & (df['AGE'] < 50), 'NEW_SEX_CAT'] = 'maturemale'
+df.loc[(df['SEX'] == 'male') & (df['AGE'] >= 50), 'NEW_SEX_CAT'] = 'seniormale'
+df.loc[(df['SEX'] == 'female') & (df['AGE'] <= 21), 'NEW_SEX_CAT'] = 'youngfemale'
+df.loc[(df['SEX'] == 'female') & (df['AGE'] > 21) & (df['AGE'] < 50), 'NEW_SEX_CAT'] = 'maturefemale'
+df.loc[(df['SEX'] == 'female') & (df['AGE'] >= 50), 'NEW_SEX_CAT'] = 'seniorfemale'
+
+df = df.apply(lambda x: x.fillna(x.mode()[0]) if (x.dtype == "O" and len(x.unique()) <= 10) else x, axis=0)
+
+
+# Label Encoding
+
+binary_cols = [col for col in df.columns if df[col].dtype not in ["int32", "int64", "float64"] and df[col].nunique() == 2]
+
+for col in binary_cols:
+    df = label_encoder(df, col)
+
+
+# Rare Encoding
+
+rare_analyser(df, "SURVIVED", cat_cols)
+
+df = rare_encoder(df, 0.01)
+
+df["NEW_TITLE"].value_counts()
+
+ohe_cols = [col for col in df.columns if 2 < df[col].nunique() <= 10]
+
+df = one_hot_encoder(df, ohe_cols)
+df.head()
+df.shape
+
+num_cols, cat_cols, cat_but_car = grab_col_names(df)
+
+num_cols = [col for col in num_cols if "PASSENGERID" not in col]
+
+rare_analyser(df, "SURVIVED", cat_cols)
+
+useless_cols = [col for col in df.columns if df[col].nunique() == 2 and
+                (df[col].value_counts() / len(df) < 0.01).any(axis=None)]
+
+
+df.drop(useless_cols, axis=1, inplace=True)
+
+# Standart Scaler
+scaler = StandardScaler()
+df[num_cols] = scaler.fit_transform(df[num_cols])
+df[num_cols].head()
+
+df.head()
+y = df["SURVIVED"]
+x = df.drop(["PASSENGERID", "SURVIVED"], axis=1)
+
+X_train, X_test, y_train, y_test = train_test_split(x, y, test_size=0.3, random_state=17)
+
+from sklearn.ensemble import RandomForestClassifier
+
+rf_model = RandomForestClassifier(random_state=46).fit(X_train, y_train)
+y_pred = rf_model.predict(X_test)
+accuracy_score(y_pred, y_test)
+
+# Hiçbir işlem yapılmadan elde edilecek skor
+dff = load()
+dff.dropna(inplace=True)
+dff = pd.get_dummies(dff, columns=["Sex", "Embarked"], drop_first=True)
+y = dff["Survived"]
+X = dff.drop(["PassengerId", "Survived", "Name", "Ticket", "Cabin"], axis=1)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=17)
+rf_model = RandomForestClassifier(random_state=46).fit(X_train, y_train)
+y_pred = rf_model.predict(X_test)
+accuracy_score(y_pred, y_test)
+
+
+def plot_importance(model, features, num=len(X), save=False):
+    feature_imp = pd.DataFrame({'Value': model.feature_importances_, 'Feature': features.columns})
+    plt.figure(figsize=(10, 10))
+    sns.set(font_scale=1)
+    sns.barplot(x="Value", y="Feature", data=feature_imp.sort_values(by="Value", ascending=False)[0:num])
+    plt.title('Features')
+    plt.tight_layout()
+    plt.show()
+    if save:
+        plt.savefig('importances.png')
+
+
+plot_importance(rf_model, X_train, save=True)
 
