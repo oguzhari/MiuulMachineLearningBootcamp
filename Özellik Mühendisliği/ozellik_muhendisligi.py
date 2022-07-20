@@ -27,6 +27,7 @@ from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import LocalOutlierFactor
 from sklearn.preprocessing import MinMaxScaler, LabelEncoder, StandardScaler, RobustScaler
+import time
 
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
@@ -39,9 +40,10 @@ def load_application_train():
     return data
 
 
+start_time = time.time()
 df = load_application_train()
-df.head()
-
+print(df)
+print("--- %.4f seconds ---" % (time.time() - start_time))
 
 def load():
     data = pd.read_csv('Özellik Mühendisliği/datasets/titanic.csv')
