@@ -1,3 +1,6 @@
 
 Özellik Mühendisliği/datasets/application_train.csv
 Özellik Mühendisliği/datasets/.application_train.csv.icloud
+.idea/csv-plugin.xml
+.DS_Store
+*.xml

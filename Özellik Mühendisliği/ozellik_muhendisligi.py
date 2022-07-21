@@ -277,7 +277,7 @@ df_scores[0:5]
 np.sort(df_scores)[0:5]
 
 scores = pd.DataFrame(np.sort(df_scores))
-scores.plot(stacked=True, xlim=[0, 50], style='.-')
+scores.plot(stacked=True, xlim=[0, 700], style='.-')
 plt.show()
 th = np.sort(df_scores)[3]
 

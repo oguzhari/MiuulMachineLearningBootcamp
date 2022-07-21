@@ -1,6 +1,9 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from sklearn.impute import KNNImputer
+from sklearn.neighbors import LocalOutlierFactor
+
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
 pd.set_option('display.width', 500)
@@ -38,7 +41,6 @@ df.columns
 
 ####################################
 # Adım 1.1: Genel resmi inceleyiniz.
-
 
 def check_df(dataframe, head=5):
     print("##### Shape #####")
@@ -122,7 +124,9 @@ def grab_col_names(dataframe, cat_th=10, car_th=20) -> [list, list, list]:
     return numeric_cols, categorical_cols, categorical_but_cardinal
 
 
-num_cols, cat_cols, cat_but_car = grab_col_names(df)
+num_cols, cat_cols, cat_but_car = grab_col_names(df, cat_th=20)
+# Sayısal verilerin çokluğu sebebiyle th_20 olarak verildi.
+
 
 ##########################################################
 # Adım 1.3: Numerik ve kategorik değişkenleri yakalayınız.
@@ -161,7 +165,8 @@ for col in num_cols:
 
 
 def target_summary_with_cat(dataframe, target, categorical_col):
-    print(pd.DataFrame({"Target_Mean": dataframe.groupby(categorical_col)[target].mean()}))
+    print(pd.DataFrame({"Target_Mean": dataframe.groupby(categorical_col)[target].mean(),
+                        "Value_Count": dataframe.groupby(categorical_col)[target].count()}))
 
 
 for col in cat_cols:
@@ -191,10 +196,13 @@ def outlier_thresholds(dataframe, col_name, q1_th=0.25, q3_th=0.75):
 
 
 def check_outlier(dataframe, col_names):
+    print("_" * 36)
+    print("{:25s} {}".format("Column", "True/False"))
+    print("-" * 36)
     for col_name in col_names:
         lower_limit, upper_limit = outlier_thresholds(dataframe, col_name)
-        print("{}: {}".format(col_name, dataframe[(dataframe[col_name] < lower_limit) |
-                                                  (dataframe[col_name] > upper_limit)].any(axis=None)))
+        print("{:25s} {}".format(col_name, dataframe[(dataframe[col_name] < lower_limit) |
+                                                    (dataframe[col_name] > upper_limit)].any(axis=None)))
 
 
 check_outlier(df, df.columns)
@@ -237,5 +245,123 @@ def high_correlated_cols(dataframe, plot=False, corr_th=0.90):
 
 high_cor_cols = high_correlated_cols(df)
 
+
+######################################
+# Görev 2: Feature Engineering
+######################################
+
+##########################################################
+# Adım 2.1: Eksik değerler için gerekli işlemleri yapınız.
+# Veri setinde eksik gözlem bulunmamakta ama Glikoz, Insulin
+# vb. değişkenlerde 0 değer içeren gözlem birimleri eksik
+# değeri ifade ediyor olabilir. Örneğin, bir kişini glikoz
+# veya insülin değeri 0 olamayacaktır. Bu durumu dikkate
+# alarak sıfır değerlerini ilgili değerlerde NaN atama yapıp
+# sonrasında değerlere işlemleri uygulayabilirsiniz.
+
+check_df(df)
+# Burada dataframe içerisinde min değerleri inceleyeceğiz.
+# 0 olmasının anlamlı olduğu sütunları
+# -> Pregnancies, insanlar daha önce hamilelik yaşamamış olabilir.
+# -> Outcome, 0 olması diyabet olmaması anlamına gelmektedir.
+# 0 olmasının anlamsız olduğu sütunlar;
+# Glucose, BloodPressure, SkinThickness, Insulin, BMI
+
+# Bu sütunlar üzerindeki 0 sayılarına bakalım
+meaningless_zero = ['Glucose', 'BloodPressure', 'SkinThickness', 'Insulin', 'BMI']
+
+
+def check_zeros(dataframe, zero_cols):
+    n_zero = dataframe[zero_cols].isin([0]).sum().sort_values(ascending=False)
+    ratio = (dataframe[zero_cols].isin([0]).sum() / dataframe.shape[0] * 100).sort_values(ascending=False)
+    missing_df = pd.concat([n_zero, np.round(ratio, 2)], axis=1, keys=['n_zero', 'ratio'])
+    print(missing_df, end="\n")
+
+
+check_zeros(df, meaningless_zero)
+
+# Sıfır gördüğümüz yerlere numpy.nan atamamız gerekiyor.
+
+df = load()
+# Hatalı bir işlem olması durumunda sıfırlamak adına.
+
+
+def fill_n_nan(dataframe, col_names, rep=None):
+    """
+    Tasks
+    -----
+    Verilen dataframe'in istenilen sütunlara ait rep ile ifade edilmiş değerleri np.nan ile dolduran fonksiyon.
+
+    Parameters
+    ----------
+    dataframe: pandas.DataFrame
+        Hedef dataframe
+    col_names: list
+        Değişilmesi istenen sütunlara ait isimleri içeren list
+    rep: NoneType
+        Sütunların içerisinden değiştirilmesi istenilen değer. int, float ve string gibi farklı değerler kabul
+        edebilir.
+
+    Returns
+    -------
+    verilen sütunlarının verilen rep değeri ile değiştirilmiş dataframe.
+    """
+    for col in col_names:
+        dataframe[col] = dataframe[col].replace(rep, np.nan)
+    return dataframe[col_names]
+
+
+df[meaningless_zero] = fill_n_nan(df, meaningless_zero, 0)
+
+check_zeros(df, meaningless_zero)
+missing_cols = missing_values_table(df)
+
+# Atama işlemlerinden sonra, nan değerlerin bir makine
+# öğrenimi yöntemiyle doldurulması gerektiğini düşünüyorum.
+# Diyabet kişinin sağlılıyla direkt olarak ilgili olduğu için
+# boş değerlerin sınırlara çekilesi değil, diğer değerlere göre
+# doldurulması daha sağlıklı olacaktır.
+
+
+Imputer = KNNImputer(n_neighbors=5)
+df = pd.DataFrame(Imputer.fit_transform(df), columns=df.columns)
+# Boş olan değerleri KNNImputer ile doldurarak, elde ettiğimiz dataframe'i
+# tekrardan üstünde çalıştığımız dataframe'e yazdık. Şu an dataframe'imizde
+# nan ya da 0 olan bir değer yok.
+
+check_zeros(df, meaningless_zero)
+missing_values_table(df)
+
+# Sıfırlardan kurtulduktan sonra yapmamız gereken şey, outliers'lardan kurtulmak
+# Ancak direkt outliers'ı seçmek yerine, diğer değerlere göre outliers kontrolü yapmalıyız.
+# Çünkü şeker hastalığı kişinin sağlık durumuyla doğrudan alakalı.
+# outliers değerleri kendi özellerinde incelemeliyiz.
+
+clf = LocalOutlierFactor(n_neighbors=20)
+clf.fit_predict(df)
+df_scores = clf.negative_outlier_factor_
+np.sort(df_scores)[0:5]
+
+# describe ederek genele bakalım.
+df_scores_des = pd.DataFrame(np.sort(df_scores))
+df_scores_des.describe().T
+
+# Görsel olarak kırılımı görelim.
+scores = pd.DataFrame(np.sort(df_scores))
+scores.plot(stacked=True, xlim=[0, 50], style='.-')
+plt.show()
+plt.savefig('diabetes_outliers', dpi=300)
+
+# Treshold değerimizi tanımlayalım.
+th = np.sort(df_scores)[5]
+
+# Veriye göz atalım.
+df[df_scores < th]
+df.describe([0.01, 0.05, 0.75, 0.9, 0.99]).T
+
+# Aykırılardan kurtulalım.
+df.drop(df[df_scores < th].index, axis=0, inplace=True)
+
+check_df(df)
 
 
