@@ -3,6 +3,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.impute import KNNImputer
 from sklearn.neighbors import LocalOutlierFactor
+from sklearn.metrics import accuracy_score
+from statsmodels.stats.proportion import proportions_ztest
+from sklearn.preprocessing import MinMaxScaler, LabelEncoder, StandardScaler, RobustScaler
+from sklearn.model_selection import train_test_split
 
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
@@ -364,4 +368,113 @@ df.drop(df[df_scores < th].index, axis=0, inplace=True)
 
 check_df(df)
 
+
+# Yeni
+df["High_Glucose"] = np.where(df.Glucose >= 150, 1, 0)
+df.High_Glucose.value_counts()
+
+# Yeni değişken anlamlı mı?
+
+test_stats, pvalue = proportions_ztest(count=[df.loc[df["High_Glucose"] == 1, "Outcome"].sum(),
+                                              df.loc[df["High_Glucose"] == 0, "Outcome"].sum()],
+                                       nobs=[df.loc[df["High_Glucose"] == 1, "Outcome"].shape[0],
+                                             df.loc[df["High_Glucose"] == 0, "Outcome"].shape[0]])
+
+
+print('Test stat= %.4f, p-value %.4f' % (test_stats, pvalue))
+# Test stat= 10.8328, p-value 0.0000
+# pvalue, < 0.05 ise h0 hipotezi reddedilir, h1 kabul edilir.
+# h0: Şekerin yüksek olması ile diyabet arasında anlamlı fark yoktur
+# h1: Şekerin yüksek olması ile diyabet arasında anlamlı fark vardır.
+
+df["high_insulin"] = np.where(df.Insulin >= 190, 1, 0)
+# 190 seçme sebebim, 190'ın Q3 değeri olması.
+
+df.columns = [col.upper() for col in df.columns]
+df.columns
+# Bütün sütun isimlerini büyük yaptık.
+
+test_stats, pvalue = proportions_ztest(count=[df.loc[df["HIGH_GLUCOSE"] == 1, "OUTCOME"].sum(),
+                                              df.loc[df["HIGH_GLUCOSE"] == 0, "OUTCOME"].sum()],
+                                       nobs=[df.loc[df["HIGH_GLUCOSE"] == 1, "OUTCOME"].shape[0],
+                                             df.loc[df["HIGH_GLUCOSE"] == 0, "OUTCOME"].shape[0]])
+
+
+print('Test stat= %.4f, p-value %.4f' % (test_stats, pvalue))
+# Test stat= 10.8328, p-value 0.0000
+
+df["NEW_GLUCOSE_INSULINE"] = df["GLUCOSE"] / df["INSULIN"]
+
+# Yaşa göre doğurganlık
+df.loc[(df.PREGNANCIES >= 3) & (df.AGE <= 27), "NEW_PREG_CAT"] = "fertile_young"
+df.loc[(df.PREGNANCIES <= 2) & (df.PREGNANCIES >= 1) & (df.AGE <= 27), "NEW_PREG_CAT"] = "normal_young"
+df.loc[(df.PREGNANCIES == 0) & (df.AGE <= 27), "NEW_PREG_CAT"] = "unprofilic_young"
+
+df.loc[(df.PREGNANCIES >= 3) & (df.AGE > 27) & (df.AGE <= 35), "NEW_PREG_CAT"] = "fertile_mature"
+df.loc[(df.PREGNANCIES <= 2) & (df.PREGNANCIES >= 1) & (df.AGE > 27) & (df.AGE <= 35), "NEW_PREG_CAT"] = "normal_mature"
+df.loc[(df.PREGNANCIES == 0) & (df.AGE > 27) & (df.AGE <= 35), "NEW_PREG_CAT"] = "unprofilic_mature"
+
+df.loc[(df.PREGNANCIES >= 3) & (df.AGE > 35) & (df.AGE <= 50), "NEW_PREG_CAT"] = "fertile_aged"
+df.loc[(df.PREGNANCIES <= 2) & (df.PREGNANCIES >= 1) & (df.AGE > 35) & (df.AGE <= 50), "NEW_PREG_CAT"] = "normal_aged"
+df.loc[(df.PREGNANCIES == 0) & (df.AGE > 35) & (df.AGE <= 50), "NEW_PREG_CAT"] = "unprofilic_aged"
+
+df.loc[(df.PREGNANCIES >= 3) & (df.AGE > 50), "NEW_PREG_CAT"] = "fertile_over_aged"
+df.loc[(df.PREGNANCIES <= 2) & (df.PREGNANCIES >= 1) & (df.AGE > 50), "NEW_PREG_CAT"] = "normal_over_aged"
+df.loc[(df.PREGNANCIES == 0) & (df.AGE > 50), "NEW_PREG_CAT"] = "unprofilic_over_aged"
+
+
+df.groupby("NEW_PREG_CAT")["OUTCOME"].mean()
+
+# Yaş kategorisi
+df.loc[(df['AGE'] <= 27), 'NEW_AGE_CAT'] = 'young'
+df.loc[(df['AGE'] > 27) & (df['AGE'] <= 35), 'NEW_AGE_CAT'] = 'mature'
+df.loc[(df['AGE'] > 35) & (df['AGE'] <= 50), 'NEW_AGE_CAT'] = 'aged'
+df.loc[(df['AGE'] > 50), 'NEW_AGE_CAT'] = 'over_aged'
+
+df.loc[(df['PREGNANCIES']) > 0, "NEW_EVER_PREG_CAT"] = "YES"
+df.loc[(df['PREGNANCIES']) == 0, "NEW_EVER_PREG_CAT"] = "NO"
+
+num_cols, cat_cols, cat_but_car = grab_col_names(df)
+
+
+def label_encoder(dataframe, binary_col):
+    label_encod = LabelEncoder()
+    dataframe[binary_col] = label_encod.fit_transform(dataframe[binary_col])
+    return dataframe
+
+
+def one_hot_encoder(dataframe, categorical_cols, drop_first=True):
+    dataframe = pd.get_dummies(dataframe, columns=categorical_cols, drop_first=drop_first)
+    return dataframe
+
+
+binary_cols = [col for col in df.columns if df[col].dtype not in ["int32", "int64", "float64"] and
+               df[col].nunique() == 2]
+
+for col in binary_cols:
+    df = label_encoder(df, col)
+
+ohe_cols = [col for col in df.columns if 2 < df[col].nunique() <= 15]
+
+df = one_hot_encoder(df, ohe_cols)
+
+
+useless_cols = [col for col in df.columns if df[col].nunique() == 2 and
+                (df[col].value_counts() / len(df) < 0.01).any(axis=None)]
+
+scaler = StandardScaler()
+df[num_cols] = scaler.fit_transform(df[num_cols])
+df[num_cols].head()
+
+
+y = df["OUTCOME"]
+x = df.drop("OUTCOME", axis=1)
+
+X_train, X_test, y_train, y_test = train_test_split(x, y, test_size=0.3, random_state=17)
+
+from sklearn.ensemble import RandomForestClassifier
+
+rf_model = RandomForestClassifier(random_state=46).fit(X_train, y_train)
+y_pred = rf_model.predict(X_test)
+accuracy_score(y_pred, y_test)
 
